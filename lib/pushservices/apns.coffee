@@ -13,10 +13,10 @@ class PushServiceAPNS
 
         # Handle Apple Feedbacks
         conf.feedback = (time, apnsSubscriber) ->
-            tokenResolver 'apns', apnsSubscriber.hexToken(), (subscriber) =>
+            tokenResolver 'apns', apnsSubscriber.toString(), (subscriber) =>
                 subscriber?.get (info) ->
                     if info.updated < time
-                        @logger.warn("APNS Automatic unregistration for subscriber #{subscriber.id}")
+                        @logger?.warn("APNS Automatic unregistration for subscriber #{subscriber.id}")
                         subscriber.delete()
         @feedback = new apns.Feedback(conf)
 

@@ -10,6 +10,8 @@ Event = require('./lib/event').Event
 PushServices = require('./lib/pushservices').PushServices
 logger = console
 
+redis.select( settings?.redis?.database ? 0 )
+
 createSubscriber = (fields, cb) ->
     throw new Error("Invalid value for `proto'") unless service = pushservices.getService(fields.proto)
     throw new Error("Invalid value for `token'") unless fields.token = service.validateToken(fields.token)

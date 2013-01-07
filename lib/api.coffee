@@ -68,6 +68,11 @@ exports.setupRestApi = (app, createSubscriber, authorize) ->
     app.delete '/subscriber/:subscriber_id/subscriptions/:event_id', authorize('register'), (req, res) ->
         req.subscriber.removeSubscription req.event, (deleted) ->
             res.send if deleted then 204 else 404
+            
+    # Number of subscribers
+    app.get '/event/:event_id/stats', authorize('register'), (req, res) ->
+        req.event.statistics (statistics) ->
+            res.send "stats("+JSON.stringify(statistics)+")", if statistics? then 200 else 404
 
     # Event stats
     app.get '/event/:event_id', authorize('register'), (req, res) ->

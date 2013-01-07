@@ -28,6 +28,16 @@ class Event
                 else
                     cb(null)
 
+     statistics: (cb) ->
+        return until cb
+        @redis.multi()
+            # event info
+            .hgetall(@key)
+            # subscribers total
+            .zcard("#{@key}:subs")
+            .exec (err, results) =>
+              cb({ subscribers : results[1] })
+
     publish: (data, cb) ->
         try
             payload = new Payload(data)
@@ -98,26 +108,31 @@ class Event
                 return (done) =>
                     action(new Subscriber(@redis, subscriberId), options, done)
 
-        subscribersKey = if @name is 'boardcast' then 'subscribers' else "#{@key}:subs"
+        subscribersKey = if @name is 'broadcast' then 'subscribers' else "#{@key}:subs"
         page = 0
         perPage = 100
         total = 0
         async.whilst =>
             # test if we got less items than requested during last request
             # if so, we reached to end of the list
-            return page * perPage == total
+            #console.log "At page "+page+", page * perPage = "+(page * perPage)+" total = "+total
+            return page * perPage <= total
         , (done) =>
+            #console.log "begin of function for action : "+action
             # treat subscribers by packs of 100 with async to prevent from blocking the event loop
             # for too long on large subscribers lists
-            @redis.zrange subscribersKey, (page++ * perPage), (page * perPage + perPage), 'WITHSCORES', (err, subscriberIdsAndOptions) =>
+            @redis.zrange subscribersKey, (page++ * perPage), (page * perPage), 'WITHSCORES', (err, subscriberIdsAndOptions) =>
                 tasks = []
                 for id, i in subscriberIdsAndOptions by 2
+                    #console.log "performing action for subscriber "+id
                     tasks.push performAction(id, subscriberIdsAndOptions[i + 1])
                 async.series tasks, =>
-                    total += subscriberIdsAndOptions.length / 2
+                    #console.log "task ended and subscriberIds count = "+(subscriberIdsAndOptions.length / 2)
+                    total += ((subscriberIdsAndOptions.length / 2) - 1)
                     done()
         , =>
             # all done
+            #console.log "total :"+total
             finished(total) if finished
 
 exports.Event = Event
