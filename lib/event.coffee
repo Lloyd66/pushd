@@ -109,6 +109,7 @@ class Event
                     action(new Subscriber(@redis, subscriberId), options, done)
 
         subscribersKey = if @name is 'broadcast' then 'subscribers' else "#{@key}:subs"
+        users = 0
         page = 0
         perPage = 100
         total = 0
@@ -125,6 +126,7 @@ class Event
                 tasks = []
                 for id, i in subscriberIdsAndOptions by 2
                     #console.log "performing action for subscriber "+id
+                    users += 1
                     tasks.push performAction(id, subscriberIdsAndOptions[i + 1])
                 async.series tasks, =>
                     #console.log "task ended and subscriberIds count = "+(subscriberIdsAndOptions.length / 2)
@@ -133,6 +135,6 @@ class Event
         , =>
             # all done
             #console.log "total :"+total
-            finished(total) if finished
+            finished(users) if finished
 
 exports.Event = Event
