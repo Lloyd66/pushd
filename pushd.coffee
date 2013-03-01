@@ -6,23 +6,32 @@ Netmask = require('netmask').Netmask
 redis = require('redis').createClient()
 settings = require './settings'
 Subscriber = require('./lib/subscriber').Subscriber
+EventPublisher = require('./lib/eventpublisher').EventPublisher
 Event = require('./lib/event').Event
 PushServices = require('./lib/pushservices').PushServices
+Payload = require('./lib/payload').Payload
 logger = console
 
 redis.select( settings?.redis?.database ? 0 )
 
 createSubscriber = (fields, cb) ->
-    throw new Error("Invalid value for `proto'") unless service = pushservices.getService(fields.proto)
+    throw new Error("Invalid value for `proto'") unless service = pushServices.getService(fields.proto)
     throw new Error("Invalid value for `token'") unless fields.token = service.validateToken(fields.token)
     Subscriber::create(redis, fields, cb)
 
 tokenResolver = (proto, token, cb) ->
     Subscriber::getInstanceFromToken redis, proto, token, cb
 
-pushservices = new PushServices()
+eventSourceEnabled = no
+pushServices = new PushServices()
 for name, conf of settings when conf.enabled
-    pushservices.addService(name, new conf.class(conf, logger, tokenResolver))
+    logger.log "Registering push service: #{name}"
+    if name is 'event-source'
+        # special case for EventSource which isn't a pluggable push protocol
+        eventSourceEnabled = yes
+    else
+        pushServices.addService(name, new conf.class(conf, logger, tokenResolver))
+eventPublisher = new EventPublisher(pushServices)
 
 app = express()
 
@@ -31,6 +40,7 @@ app.configure ->
     app.use(express.limit('1mb')) # limit posted data to 1MB
     app.use(express.bodyParser())
     app.use(app.router)
+    app.disable('x-powered-by');
 
 app.param 'subscriber_id', (req, res, next, id) ->
     try
@@ -40,9 +50,15 @@ app.param 'subscriber_id', (req, res, next, id) ->
     catch error
         res.json error: error.message, 400
 
+getEventFromId = (id) ->
+    return new Event(redis, id)
+
+testSubscriber = (subscriber) ->
+    pushServices.push(subscriber, null, new Payload({msg: "Test", "data.test": "ok"}))
+
 app.param 'event_id', (req, res, next, id) ->
     try
-        req.event = new Event(redis, pushservices, req.params.event_id)
+        req.event = getEventFromId(req.params.event_id)
         delete req.params.event_id
         next()
     catch error
@@ -63,9 +79,13 @@ authorize = (realm) ->
     else
         return (req, res, next) -> next()
 
-require('./lib/api').setupRestApi(app, createSubscriber, authorize)
+require('./lib/api').setupRestApi(app, createSubscriber, getEventFromId, authorize, testSubscriber, eventPublisher)
+if eventSourceEnabled
+    require('./lib/eventsource').setup(app, authorize, eventPublisher)
 
-app.listen settings?.server?.tcp_port ? 80
+port = settings?.server?.tcp_port ? 80
+app.listen port
+logger.log "Listening on port #{port}"
 
 
 # UDP Event API
@@ -87,10 +107,10 @@ udpApi.on 'message', (msg, rinfo) ->
             status = 404
             if m = req.pathname?.match(event_route)
                 try
-                    event = new Event(redis, pushservices, m[1])
+                    event = new Event(redis, m[1])
                     status = 204
                     switch method
-                        when 'POST' then event.publish(req.query)
+                        when 'POST' then eventPublisher.publish(event, req.query)
                         when 'DELETE' then event.delete()
                         else status = 404
                 catch error

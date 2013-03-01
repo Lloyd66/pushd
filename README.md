@@ -1,14 +1,14 @@
 Universal Mobile Push Daemon
 ============================
 
-*Pushd* is a pluggable unified push server for server-side notification to apps on mobile devices. With pushd you can send push notifications to any supported mobile platform from a single entry point. Pushd takes care of which device is subscribed to which event and is designed to support an unlimited amount of subscribable events.
+*Pushd* is a pluggable unified push server for server-side notification to mobile native apps, web apps etc. With pushd you can send push notifications to any supported mobile platform, web app or HTTP server from a single entry point. Pushd takes care of which device is subscribed to which event and is designed to support an unlimited amount of subscribable events.
 
-![Architecture Overview](https://github.com/rs/pushd/raw/master/doc/overview.png)
+![Architecture Overview](doc/overview.png)
 
 Features
 --------
 
-- Multi protocols (APNs (iOS), C2DM (Android), MPNS (Windows Phone)
+- Multi protocols [APNs] \(iOS), C2DM/[GCM] \(Android), [MPNS] \(Windows Phone), [HTTP] POST, [EventSource](#event-source)
 - Pluggable protocols
 - Register unlimited number of subscribers (device)
 - Subscribe to unlimited number of events
@@ -17,11 +17,17 @@ Features
 - Server side message translation
 - Message template
 - Broadcast
+- GCM multicast messaging
 - Events statistics
 - Automatic failing subscriber unregistration
 - Built-in Apple Feedback API handling
 - Redis backend
 - Fracking fast!
+
+[APNs]: https://github.com/rs/pushd/wiki/APNs
+[GCM]: https://github.com/rs/pushd/wiki/GCM
+[MPNS]: https://github.com/rs/pushd/wiki/MPNS
+[HTTP]: https://github.com/rs/pushd/wiki/HTTP
 
 Installation
 ------------
@@ -48,7 +54,7 @@ Getting Started
 
 At first launch, your app must register with the push notification service to get a registration id. It then provides this registration id to pushd in exchange for a subscriber id (This subscriber id will be used with all further communications with pushd). Some informations can be sent with the request to pushd like: subscriber language, version or current badge value.
 
-subscriber registration is performed through a HTTP REST API (see later for more details). Here is an example of a subscriber registration simulated using the curl command. As an example, we will register the iOS device with the registration id `FE66489F304DC75B8D6E8200DFF8A456E8DAEACEC428B427E9518741C92C6660`. For iOS, we have to specify the `apns` protocol. We also set the subscriber language to `fr` for French and init the badge to `0`. We suppose the command is run on the same machine as pushd:
+Subscriber registration is performed through a HTTP REST API (see later for more details). Here is an example of a subscriber registration simulated using the curl command. As an example, we will register the iOS device with the registration id `FE66489F304DC75B8D6E8200DFF8A456E8DAEACEC428B427E9518741C92C6660`. For iOS, we have to specify the `apns` protocol. We also set the subscriber language to `fr` for French and init the badge to `0`. We suppose the command is run on the same machine as pushd:
 
     $ curl -d proto=apns \
            -d token=FE66489F304DC75B8D6E8200DFF8A456E8DAEACEC428B427E9518741C92C6660 \
@@ -70,6 +76,8 @@ In reply, we get the following JSON structure:
 
 Your app must save the `id` field value, it will be used for all further communication with pushd.
 
+Note: If you perform a registration using an already registered token, the server will respond with the same subscriber id and will just update the transmitted informations. You may choose to always register the given token instead of calling the ping endpoint.
+
 ### Ping
 
 Once the app is registered, it has to ping the pushd server each time the app is launched to let pushd know the subscriber still exists. The subscriber may have been unregistered automatically in case of repeated errors for instance. To ping pushd, you perform a POST on the `/subscriber/SUBSCRIBER_ID` url as follow:
@@ -88,7 +96,20 @@ For instance, if your app is news related, you may want to create one subscripta
 
 You may later unsubscribe by switching from the `POST` to the `DELETE` method.
 
+You may also prefer to set all subscriptions at once by using the bulk subscription endpoint:
+
+    $ curl -H 'Content-Type: application/json' -d '{"sport":{}, "music":{}}' http://localhost/subscriber/J8lHY4X1XkU/subscriptions
+
 We recommend to auto-subscribe your users to some global event like for instance a country event if your app is international. This will let you send targeted messages to all of a given country’s users.
+
+### Typical App Launch Tasks
+
+1. Obtain device token from the OS
+2. Post the token on `/subscriber/:token` with parameters like `lang`, `badge` and `version`
+3. Extract the `id` from the response (you don't need to store it, treat it like a session id)
+4. Resubscribe the device to all its previously subscribed events by posting on `/subscriber/:id/subscriptions`
+
+This workflow ensures device stay registered and subscriptions are always up-to-date.
 
 ### Event Ingestion
 
@@ -99,6 +120,49 @@ You don't need to create events before sending them. If nobody is subscribed to 
 Here we will send a message to all subscribers subscribed to the `sport` event:
 
     $ curl -d msg=Test%20message http://localhost/event/sport
+
+Event Source
+------------
+
+Pushd supports the [Event Source](http://www.w3.org/TR/eventsource/) protocol, also known as Server Sent Events. This allows your web application to benefits from the same pushed event than your native apps.
+
+This protocol is very different from other pushd supported protocol because it doesn't involve subsriber registration nor stored subscriptions. The web service connects to the pushd server and declars which event it is interested in, and then pushd will push subscribed events in this same connections until the client stays connected.
+
+You may want to use [Yaffle EventSource polyfill](https://github.com/Yaffle/EventSource) on the client side in order to support CORS requests with older browsers (see code example bellow).
+
+When Event Source is enabled, a new `/subscribe` API endpoint is available. Use the `events` query-string parameter with a list of events separated by spaces:
+
+    > GET /subscribe?events=event1+event2+event3 HTTP/1.1
+    > Accept: text/event-stream
+    >
+    ---
+    < HTTP/1.1 200 OK
+    < Content-Type: text/event-stream
+    < Cache-Control: no-cache
+    < Access-Control-Allow-Origin: *
+    < Connection: close
+    <
+    ... some time passes ...
+    < data: {"event": "event1", "title": {"default": "Title", "fr": "Titre"}, "message": {...}, "data": {"var1": "val1", "var2": "val2"}}
+    ... some time passes ...
+    < data: {"event": "event2", "title": {"default": "Title", "fr": "Titre"}, "message": {...}, "data": {"var1": "val1", "var2": "val2"}}
+
+Or in Javascript:
+
+``` html
+<script src="https://raw.github.com/Yaffle/EventSource/master/eventsource.js"></script>
+<script>
+var es = new EventSource('http://localhost/subscribe?events=event1+event2+event3');
+es.addEventListener('message', function (e)
+{
+    var event = JSON.parse(e.data);
+    document.body.appendChild(document.createTextNode(event.message.default));
+    document.body.appendChild(document.createElement('br'));
+});
+</script>
+```
+
+See codepen example: http://codepen.io/rs/pen/xAjpy
 
 API
 ---
@@ -111,17 +175,17 @@ Register a subscriber by POSTing on `/subscribers` with some subscriber informat
 
     > POST /subscribers HTTP/1.1
     > Content-Type: application/x-www-form-urlencoded
-    > 
+    >
     > proto=apns&
     > token=FE66489F304DC75B8D6E8200DFF8A456E8DAEACEC428B427E9518741C92C6660&
     > lang=fr&
     > badge=0
-    > 
+    >
     ---
     < HTTP/1.1 201 Created
     < Location: /subscriber/JYJ1ehuEHbU
     < Content-Type: application/json
-    < 
+    <
     < {
     <   "created":1332638892,
     <   "updated":1332638892,
@@ -139,7 +203,7 @@ Register a subscriber by POSTing on `/subscribers` with some subscriber informat
 	- `apns`: iOS (Apple Push Notification service)
 	- `c2dm`: Android (Cloud to subscriber Messaging)
 	- `mpns` Window Phone (Microsoft Push Notification Service)
-- `token`: The device registration id delivered by the platform's push notification service 
+- `token`: The device registration id delivered by the platform's push notification service
 
 ##### Allowed parameters:
 
@@ -220,6 +284,20 @@ You may want to read informations stored about a subscriber id.
 - `400` Invalid subscriber id format
 - `404` The specified subscriber does not exist
 
+#### Self Subscriber Test
+
+You may want to test from your app if the push notification system is working. You can test this by POSTing an empty body on `/subscriber/SUBSCRIBER_ID/test`. Pushd will send back a test notification with "Test" as message and {"test": "ok"} as data.
+
+    > POST /subscriber/SUBSCRIBER_ID/test HTTP/1.1
+    >
+    --
+    < HTTP/1.1 201 Created
+
+##### Return Codes
+- `200` subscriber exists, information returned
+- `400` Invalid subscriber id format
+- `404` The specified subscriber does not exist
+
 #### Subscribe to an Event
 
 For pushd, an event is represented as a simple string. By default a subscriber won't receive push notifications other than broadcasts or direct messages if it’s not subscribed to events. Events are text and/or data sent by your service on pushd. Pushd's role is to convert this event into a push notification for any subscribed subscriber.
@@ -262,7 +340,7 @@ To unsubscribe from an event, perform a DELETE on the subscription URL.
 
 #### List subscribers’ Subscriptions
 
-To get the list of events a subscriber is subscribed to, perform a GET on the `/subscriber/SUBSCRIBER_ID/subscriptions`.
+To get the list of events a subscriber is subscribed to, perform a GET on `/subscriber/SUBSCRIBER_ID/subscriptions`.
 
     > GET /subscriber/SUBSCRIBER_ID/subscriptions HTTP/1.1
     >
@@ -284,6 +362,20 @@ To test for the presence of a single subscription, perform a GET on the subscrip
     < Content-Type: application/json
     <
     < {"ignore_message":false}
+
+#### Bulk edit subcribers's Subscriptions
+
+To set all subscriptions in one request, perform a POST with a JSON object on `/subscriber/SUBSCRIBER_ID/subscriptions` with event names as key and a dictionary of options as value or null.
+
+    > POST /subscriber/SUBSCRIBER_ID/subscriptions HTTP/1.1
+    > Content-Type: application/json
+    >
+    > {
+    >   "EVENT_NAME": {"ignore_message": false},
+    >   "EVENT_NAME2": ...
+    > }
+    ---
+    < HTTP/1.1 200 Ok
 
 ### Event Ingestion
 

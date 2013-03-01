@@ -111,7 +111,7 @@ class Subscriber
                     # check if some events have been rendered empty
                     emptyEvents = []
                     for eventName, i in events when results[4 + i + (i * 1) + 1] is 0
-                        emptyEvents.push new Event(@redis, null, eventName)
+                        emptyEvents.push new Event(@redis, eventName)
 
                     async.forEach emptyEvents, ((evt, done) => evt.delete(done)), =>
                         cb(results[1] is 1) if cb # true if deleted, false if did exist
@@ -180,8 +180,8 @@ class Subscriber
                     eventsWithOptions = results[1]
                     for eventName, i in eventsWithOptions by 2
                         subscriptions.push
-                            event: new Event(@redis, null, eventName)
-                            options: eventsWithOptions[i + 1]
+                            event: new Event(@redis, eventName)
+                            options: parseInt(eventsWithOptions[i + 1], 10)
                     cb(subscriptions)
                 else
                     cb(null) # null if subscriber doesn't exist
@@ -199,7 +199,7 @@ class Subscriber
                         event: event
                         options: parseInt(results[1], 10)
                 else
-                    cb(null) # null if subscriber doesn't exist        
+                    cb(null) # null if subscriber doesn't exist
 
     addSubscription: (event, options, cb) ->
         @redis.multi()

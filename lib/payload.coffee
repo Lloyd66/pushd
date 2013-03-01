@@ -1,9 +1,12 @@
+serial = 0
+
 class Payload
     locale_format: /^[a-z]{2}_[A-Z]{2}$/
 
     constructor: (data) ->
         throw new Error('Invalid payload') unless typeof data is 'object'
 
+        @id = serial++
         @compiled = no
         @title = {}
         @msg = {}
@@ -54,13 +57,24 @@ class Payload
         @compiled = yes
 
     compileTemplate: (tmpl) ->
-        return tmpl.replace /\$\{(.*?)\}/g, (match, variable) =>
-            [prefix, key] = variable.split('.', 2)
-            if prefix not in ['var', 'data']
-                throw new Error("Invalid variable ${#{variable}}")
-            if not @[prefix][key]?
-                throw new Error("The ${#{variable}} does not exist")
-            return @[prefix][key]
+        return tmpl.replace /\$\{(.*?)\}/g, (match, keyPath) =>
+            return @.variable(keyPath)
+
+    # Extracts variable from payload. The keyPath can be `var.somekey` or `data.somekey`
+    variable: (keyPath) ->
+        if keyPath is 'event.name'
+            # Special case
+            if @event?.name
+                return @event?.name
+            else
+                throw new Error("The ${#{keyPath}} does not exist")
+
+        [prefix, key] = keyPath.split('.', 2)
+        if prefix not in ['var', 'data']
+            throw new Error("Invalid variable type for ${#{keyPath}}")
+        if not @[prefix][key]?
+            throw new Error("The ${#{keyPath}} does not exist")
+        return @[prefix][key]
 
 
 exports.Payload = Payload
