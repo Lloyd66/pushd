@@ -6,17 +6,13 @@ exports.server =
         # restrict publish access to private networks
         publish: ['127.0.0.1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
 
-<<<<<<< HEAD
 exports.redis =
   database: 0
 
-exports.apns =
-=======
 exports['event-source'] =
     enabled: yes
 
 exports['apns'] =
->>>>>>> upstream/master
     enabled: yes
     class: require('./lib/pushservices/apns').PushServiceAPNS
     # Convert cert.cer and key.p12 using:
