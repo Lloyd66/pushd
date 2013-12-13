@@ -24,7 +24,7 @@ class PushServiceGCM
                 @multicastQueue[messageKey].subscribers.push(subscriber)
             else
                 note = new gcm.Message()
-                note.collapseKey = payload.event.name
+                note.collapseKey = payload.event?.name
                 if subOptions?.ignore_message isnt true
                     if title = payload.localizedTitle(info.lang)
                         note.addData 'title', title
@@ -41,8 +41,10 @@ class PushServiceGCM
         delete @multicastQueue[messageKey]
         clearTimeout message.timeoutId
 
-        @driver.send message.note, message.tokens, 4, (multicastResult) =>
-            if 'results' of multicastResult
+        @driver.send message.note, message.tokens, 4, (err, multicastResult) =>
+            if not multicastResult?
+                @logger?.error("GCM Error: empty response")
+            else if 'results' of multicastResult
                 for result, i in multicastResult.results
                     @.handleResult result, message.subscribers[i]
             else
@@ -50,7 +52,7 @@ class PushServiceGCM
                 @handleResult multicastResult, message.subscribers[0]
 
     handleResult: (result, subscriber) ->
-        if result.messageId
+        if result.messageId or result.message_id
             # if result.canonicalRegistrationId
                 # TODO: update subscriber token
         else

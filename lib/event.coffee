@@ -1,4 +1,5 @@
 async = require 'async'
+logger = require 'winston'
 
 class Event
     OPTION_IGNORE_MESSAGE: 1
@@ -38,22 +39,31 @@ class Event
               cb({ subscribers : results[1] })
 
     exists: (cb) ->
-        @redis.sismember "events", @name, (err, exists) =>
-            cb(exists)
+        if @name is 'broadcast'
+            cb(true)
+        else
+            @redis.sismember "events", @name, (err, exists) =>
+                cb(exists)
 
     delete: (cb) ->
+        logger.verbose "Deleting event #{@name}"
+
+        subscriberCount = 0
         @forEachSubscribers (subscriber, subOptions, done) =>
             # action
             subscriber.removeSubscription(@, done)
+            subscriberCount += 1
         , =>
             # finished
+            logger.verbose "Unsubscribed #{subscriberCount} subscribers from #{@name}"
+    
             @redis.multi()
                 # delete event's info hash
                 .del(@key)
                 # remove event from global event list
                 .srem("events", @name)
-                .exec ->
-                    cb() if cb
+                .exec (err, results) ->
+                    cb(results[1] > 0) if cb
 
     log: (cb) ->
         @redis.multi()

@@ -3,18 +3,26 @@ dgram = require 'dgram'
 zlib = require 'zlib'
 url = require 'url'
 Netmask = require('netmask').Netmask
-redis = require('redis').createClient()
 settings = require './settings'
+redis = require('redis').createClient(settings.server.redis_socket or settings.server.redis_port, settings.server.redis_host)
 Subscriber = require('./lib/subscriber').Subscriber
 EventPublisher = require('./lib/eventpublisher').EventPublisher
 Event = require('./lib/event').Event
 PushServices = require('./lib/pushservices').PushServices
 Payload = require('./lib/payload').Payload
-logger = console
+logger = require 'winston'
+
+if settings.loglevel?
+    logger.remove(logger.transports.Console);
+    logger.add(logger.transports.Console, { level: settings.loglevel });
+
+if settings.server?.redis_auth?
+    redis.auth(settings.server.redis_auth)
 
 redis.select( settings?.redis?.database ? 0 )
 
 createSubscriber = (fields, cb) ->
+    logger.verbose "creating subscriber proto = #{fields.proto}, token = #{fields.token}"
     throw new Error("Invalid value for `proto'") unless service = pushServices.getService(fields.proto)
     throw new Error("Invalid value for `token'") unless fields.token = service.validateToken(fields.token)
     Subscriber::create(redis, fields, cb)
@@ -25,7 +33,7 @@ tokenResolver = (proto, token, cb) ->
 eventSourceEnabled = no
 pushServices = new PushServices()
 for name, conf of settings when conf.enabled
-    logger.log "Registering push service: #{name}"
+    logger.info "Registering push service: #{name}"
     if name is 'event-source'
         # special case for EventSource which isn't a pluggable push protocol
         eventSourceEnabled = yes
@@ -33,11 +41,24 @@ for name, conf of settings when conf.enabled
         pushServices.addService(name, new conf.class(conf, logger, tokenResolver))
 eventPublisher = new EventPublisher(pushServices)
 
+checkUserAndPassword = (username, password) =>
+    if settings.server?.auth?
+        if not settings.server.auth[username]?
+            logger.error "Unknown user #{username}"
+            return false
+        passwordOK = password is settings.server.auth[username].password
+        if not passwordOK
+            logger.error "Invalid password for #{username}"
+        return passwordOK
+    return false
+
 app = express()
 
 app.configure ->
     app.use(express.logger(':method :url :status')) if settings.server?.access_log
     app.use(express.limit('1mb')) # limit posted data to 1MB
+    if settings.server?.auth? and not settings.server?.acl?
+        app.use(express.basicAuth checkUserAndPassword)
     app.use(express.bodyParser())
     app.use(app.router)
     app.disable('x-powered-by');
@@ -65,7 +86,23 @@ app.param 'event_id', (req, res, next, id) ->
         res.json error: error.message, 400
 
 authorize = (realm) ->
-    if allow_from = settings.server?.acl?[realm]
+    if settings.server?.auth?
+        return (req, res, next) ->
+            # req.user has been set by express.basicAuth
+            logger.verbose "Authenticating #{req.user} for #{realm}"
+            if not req.user?
+                logger.error "User not authenticated"
+                res.json error: 'Unauthorized', 403
+                return
+
+            allowedRealms = settings.server.auth[req.user]?.realms or []
+            if realm not in allowedRealms
+                logger.error "No access to #{realm} for #{req.user}, allowed: #{allowedRealms}"
+                res.json error: 'Unauthorized', 403
+                return
+
+            next()
+    else if allow_from = settings.server?.acl?[realm]
         networks = []
         for network in allow_from
             networks.push new Netmask(network)
@@ -85,7 +122,7 @@ if eventSourceEnabled
 
 port = settings?.server?.tcp_port ? 80
 app.listen port
-logger.log "Listening on port #{port}"
+logger.info "Listening on tcp port #{port}"
 
 
 # UDP Event API
@@ -103,7 +140,7 @@ udpApi.on 'message', (msg, rinfo) ->
         req = url.parse(msg ? '', true)
         method = method.toUpperCase()
         # emulate an express route middleware call
-        @checkaccess {socket: remoteAddress: rinfo.address}, {json: -> logger.log("UDP/#{method} #{req.pathname} 403")}, ->
+        @checkaccess {socket: remoteAddress: rinfo.address}, {json: -> logger.info("UDP/#{method} #{req.pathname} 403")}, ->
             status = 404
             if m = req.pathname?.match(event_route)
                 try
@@ -116,6 +153,9 @@ udpApi.on 'message', (msg, rinfo) ->
                 catch error
                     logger.error(error.stack)
                     return
-            logger.log("UDP/#{method} #{req.pathname} #{status}") if settings.server?.access_log
+            logger.info("UDP/#{method} #{req.pathname} #{status}") if settings.server?.access_log
 
-udpApi.bind settings?.server?.udp_port ? 80
+port = settings?.server?.udp_port
+if port?
+    udpApi.bind port
+    logger.info "Listening on udp port #{port}"
