@@ -11,14 +11,17 @@ class PushServiceAPNS
             @logger?.error("APNS Error #{errCode} for subscriber #{note?.device?.subscriberId}")
         @driver = new apns.Connection(conf)
 
-        # Handle Apple Feedbacks
-        conf.feedback = (time, apnsSubscriber) ->
-            tokenResolver 'apns', apnsSubscriber.toString(), (subscriber) =>
-                subscriber?.get (info) ->
-                    if info.updated < time
-                        @logger?.warn("APNS Automatic unregistration for subscriber #{subscriber.id}")
-                        subscriber.delete()
+        @payloadFilter = conf.payloadFilter
+
         @feedback = new apns.Feedback(conf)
+        # Handle Apple Feedbacks
+        @feedback.on 'feedback', (feedbackData) =>
+            feedbackData.forEach (item) =>
+                tokenResolver 'apns', item.device.toString(), (subscriber) =>
+                    subscriber?.get (info) ->
+                        if info.updated < item.time
+                            @logger?.warn("APNS Automatic unregistration for subscriber #{subscriber.id}")
+                            subscriber.delete()
 
 
     push: (subscriber, subOptions, payload) ->

@@ -84,3 +84,8 @@ exports['mpns-tile'] =
         wideBackgroundImage: "${data.wide_background_image_url}"
         wideBackContent: "${data.message}"
         wideBackBackgroundImage: "#005e8a"
+
+exports['mpns-raw'] =
+    enabled: yes
+    class: require('./lib/pushservices/mpns').PushServiceMPNS
+    type: 'raw'
