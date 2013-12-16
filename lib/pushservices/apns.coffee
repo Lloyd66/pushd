@@ -34,6 +34,7 @@ class PushServiceAPNS
             note.badge = badge if not isNaN(badge = parseInt(info.badge) + 1)
             note.sound = payload.sound
             note.payload = payload.data
+            note.expiry = Math.floor(Date.now() / 1000) + 24*3600;
             @driver.sendNotification note
             # On iOS we have to maintain the badge counter on the server
             subscriber.incr 'badge'
