@@ -176,3 +176,10 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 res.send 204
             else
                 res.send 404
+    app.post '/batch/', authorize('publish'), (req, res) ->
+        res.send 204
+        logger.error JSON.stringify(req.body.notifications)
+        for notification in req.body.notifications
+            event = getEventFromId(notification.event)
+            logger.error "Sending notification for event => " + event.name
+            eventPublisher.publish(event, notification.body)
