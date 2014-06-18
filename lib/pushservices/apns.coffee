@@ -33,17 +33,18 @@ class PushServiceAPNS
             note.device.subscriberId = subscriber.id # used for error logging
             if subOptions?.ignore_message isnt true and alert = payload.localizedMessage(info.lang)
                 note.alert = alert
-            note.badge = badge if not isNaN(badge = parseInt(info.badge) + 1)
+            if settings?.options?.apns?.auto_increment_badge ? yes
+                note.badge = badge if not isNaN(badge = parseInt(info.badge) + 1)
+            else
+                note.badge = 0
             note.sound = payload.sound
             note.payload = payload.data
             note.expiry = Math.floor(Date.now() / 1000) + 24*3600;
             @driver.sendNotification note
             # On iOS we have to maintain the badge counter on the server
             # We check if settings of auto_increment_badge is set. If it is undefined, default is auto increment
-            if settings?.options?.apns?.auto_increment_badge ? yes
+            if(settings?.options?.apns?.auto_increment_badge ? yes)
                 subscriber.incr 'badge'
-            else
-                subscriber.set 'badge', 0
 
 
 exports.PushServiceAPNS = PushServiceAPNS
