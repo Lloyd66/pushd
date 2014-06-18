@@ -1,5 +1,7 @@
 apns = require 'apn'
 
+settings = require '../../settings'
+
 class PushServiceAPNS
     tokenFormat: /^[0-9a-f]{64}$/i
     validateToken: (token) ->
@@ -37,6 +39,11 @@ class PushServiceAPNS
             note.expiry = Math.floor(Date.now() / 1000) + 24*3600;
             @driver.sendNotification note
             # On iOS we have to maintain the badge counter on the server
-            subscriber.incr 'badge'
+            # We check if settings of auto_increment_badge is set. If it is undefined, default is auto increment
+            if settings?.options?.apns?.auto_increment_badge ? yes
+                subscriber.incr 'badge'
+            else
+                subscriber.set 'badge', 0
+
 
 exports.PushServiceAPNS = PushServiceAPNS

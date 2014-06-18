@@ -13,6 +13,10 @@ exports.server =
 exports.redis =
   database: 0
 
+exports.options =
+    apns:
+        auto_increment_badge: no
+
 exports['event-source'] =
     enabled: yes
 
