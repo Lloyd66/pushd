@@ -3,6 +3,10 @@ async = require 'async'
 Event = require('./event').Event
 logger = require 'winston'
 
+http = require 'http'
+url = require 'url'
+settings = require '../settings'
+
 class Subscriber
     getInstanceFromToken: (redis, proto, token, cb) ->
         return until cb
@@ -90,6 +94,14 @@ class Subscriber
             .exec (err, results) =>
                 [proto, token] = results[0]
                 events = results[1]
+
+                if settings?.callbacks?.api_key?
+                    unsubscribeCallback = "#{settings.callbacks.address}#{settings.callbacks.unsubscribe}?api_key=#{settings.callbacks.api_key}&token=#{token}&proto=#{proto}"
+                    options = url.parse(unsubscribeCallback)
+                    options.method = 'DELETE'
+                    req = http.request(options)
+                    req.end()
+
                 multi = @redis.multi()
                     # remove from subscriber token to id map
                     .hdel("tokenmap", "#{proto}:#{token}")
