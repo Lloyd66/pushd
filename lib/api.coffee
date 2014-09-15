@@ -19,10 +19,10 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 subscriber.get (info) ->
                     info.id = subscriber.id
                     res.header 'Location', "/subscriber/#{subscriber.id}"
-                    res.json info, if created then 201 else 200
+                    res.status(if created then 201 else 200).json(info)
         catch error
             logger.error "Creating subscriber failed: #{error.message}"
-            res.json error: error.message, 400
+            res.status(400).json(error: error.message)
 
     # Get subscriber info
     app.get '/subscriber/:subscriber_id', authorize('register'), (req, res) ->
@@ -31,7 +31,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 logger.error "No subscriber #{req.subscriber.id}"
             else
                 logger.verbose "Subscriber #{req.subscriber.id} info: " + JSON.stringify(fields)
-            res.json fields, if fields? then 200 else 404
+            res.status(if fields? then 200 else 404).json(fields)
 
     # Edit subscriber info
     app.post '/subscriber/:subscriber_id', authorize('register'), (req, res) ->
@@ -40,14 +40,14 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
         req.subscriber.set fields, (edited) ->
             if not edited
                 logger.error "No subscriber #{req.subscriber.id}"
-            res.send if edited then 204 else 404
+            res.status(if edited then 204 else 404)
 
     # Unregister subscriber
     app.delete '/subscriber/:subscriber_id', authorize('register'), (req, res) ->
         req.subscriber.delete (deleted) ->
             if not deleted
                 logger.error "No subscriber #{req.subscriber.id}"
-            res.send if deleted then 204 else 404
+            res.status(if deleted then 204 else 404)
 
     app.post '/subscriber/:subscriber_id/test', authorize('register'), (req, res) ->
         testSubscriber(req.subscriber)
@@ -61,10 +61,10 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 for sub in subs
                     subsAndOptions[sub.event.name] = {ignore_message: (sub.options & sub.event.OPTION_IGNORE_MESSAGE) isnt 0}
                 logger.verbose "Status of #{req.subscriber.id}: " + JSON.stringify(subsAndOptions)
-                res.json subsAndOptions
+                res.json(subsAndOptions)
             else
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.send 404
+                res.status(404)
 
     # Set subscriber subscriptions
     app.post '/subscriber/:subscriber_id/subscriptions', authorize('register'), (req, res) ->
@@ -79,13 +79,13 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 subsToAdd[event.name] = event: event, options: options
             catch error
                 logger.error "Failed to set subscriptions for #{req.subscriber.id}: #{error.message}"
-                res.json error: error.message, 400
+                res.status(400).json(error: error.message)
                 return
 
         req.subscriber.getSubscriptions (subs) ->
             if not subs?
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.send 404
+                res.status(404)
                 return
 
             tasks = []
@@ -122,10 +122,10 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
     app.get '/subscriber/:subscriber_id/subscriptions/:event_id', authorize('register'), (req, res) ->
         req.subscriber.getSubscription req.event, (options) ->
             if options?
-                res.json {ignore_message: (options & req.event.OPTION_IGNORE_MESSAGE) isnt 0}
+                res.json({ignore_message: (options & req.event.OPTION_IGNORE_MESSAGE) isnt 0})
             else
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.send 404
+                res.status(404)
 
     # Subscribe a subscriber to an event
     app.post '/subscriber/:subscriber_id/subscriptions/:event_id', authorize('register'), (req, res) ->
@@ -137,7 +137,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 res.send if added then 201 else 204
             else
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.send 404
+                res.status(404)
 
     # Unsubscribe a subscriber from an event
     app.delete '/subscriber/:subscriber_id/subscriptions/:event_id', authorize('register'), (req, res) ->
@@ -146,7 +146,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 logger.error "No subscriber #{req.subscriber.id}"
             else if not deleted
                 logger.error "Subscriber #{req.subscriber.id} was not subscribed to #{req.event.name}"
-            res.send if deleted then 204 else 404
+            res.status( if deleted then 204 else 404)
             
     # Number of subscribers
     app.get '/event/:event_id/stats', authorize('register'), (req, res) ->
@@ -160,11 +160,11 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 logger.error "No event #{req.event.name}"
             else
                 logger.verbose "Event #{req.event.name} info: " + JSON.stringify info
-            res.json info, if info? then 200 else 404
+            res.status(if info? then 200 else 404).json(info)
 
     # Publish an event
     app.post '/event/:event_id', authorize('publish'), (req, res) ->
-        res.send 204
+        res.status(204)
         eventPublisher.publish(req.event, req.body)
 
     # Delete an event
@@ -173,11 +173,11 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
             if not deleted
                 logger.error "No event #{req.event.name}"
             if deleted
-                res.send 204
+                res.status 204
             else
-                res.send 404
+                res.status 404
     app.post '/batch/', authorize('publish'), (req, res) ->
-        res.send 204
+        res.status 204
         logger.error JSON.stringify(req.body.notifications)
         for notification in req.body.notifications
             event = getEventFromId(notification.event)
