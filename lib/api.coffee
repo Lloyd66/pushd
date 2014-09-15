@@ -40,14 +40,14 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
         req.subscriber.set fields, (edited) ->
             if not edited
                 logger.error "No subscriber #{req.subscriber.id}"
-            res.status(if edited then 204 else 404)
+            res.status(if edited then 204 else 404).end()
 
     # Unregister subscriber
     app.delete '/subscriber/:subscriber_id', authorize('register'), (req, res) ->
         req.subscriber.delete (deleted) ->
             if not deleted
                 logger.error "No subscriber #{req.subscriber.id}"
-            res.status(if deleted then 204 else 404)
+            res.status(if deleted then 204 else 404).end()
 
     app.post '/subscriber/:subscriber_id/test', authorize('register'), (req, res) ->
         testSubscriber(req.subscriber)
@@ -64,7 +64,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 res.json(subsAndOptions)
             else
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.status(404)
+                res.status(404).end()
 
     # Set subscriber subscriptions
     app.post '/subscriber/:subscriber_id/subscriptions', authorize('register'), (req, res) ->
@@ -85,7 +85,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
         req.subscriber.getSubscriptions (subs) ->
             if not subs?
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.status(404)
+                res.status(404).end()
                 return
 
             tasks = []
@@ -125,7 +125,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 res.json({ignore_message: (options & req.event.OPTION_IGNORE_MESSAGE) isnt 0})
             else
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.status(404)
+                res.status(404).end()
 
     # Subscribe a subscriber to an event
     app.post '/subscriber/:subscriber_id/subscriptions/:event_id', authorize('register'), (req, res) ->
@@ -137,7 +137,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 res.send if added then 201 else 204
             else
                 logger.error "No subscriber #{req.subscriber.id}"
-                res.status(404)
+                res.status(404).end()
 
     # Unsubscribe a subscriber from an event
     app.delete '/subscriber/:subscriber_id/subscriptions/:event_id', authorize('register'), (req, res) ->
@@ -146,7 +146,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
                 logger.error "No subscriber #{req.subscriber.id}"
             else if not deleted
                 logger.error "Subscriber #{req.subscriber.id} was not subscribed to #{req.event.name}"
-            res.status( if deleted then 204 else 404)
+            res.status( if deleted then 204 else 404).end()
             
     # Number of subscribers
     app.get '/event/:event_id/stats', authorize('register'), (req, res) ->
@@ -164,7 +164,7 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
 
     # Publish an event
     app.post '/event/:event_id', authorize('publish'), (req, res) ->
-        res.status(204)
+        res.status(204).end()
         eventPublisher.publish(req.event, req.body)
 
     # Delete an event
@@ -173,11 +173,11 @@ exports.setupRestApi = (app, createSubscriber, getEventFromId, authorize, testSu
             if not deleted
                 logger.error "No event #{req.event.name}"
             if deleted
-                res.status 204
+                res.status(204).end()
             else
-                res.status 404
+                res.status(404).end()
     app.post '/batch/', authorize('publish'), (req, res) ->
-        res.status 204
+        res.status(204).end()
         logger.error JSON.stringify(req.body.notifications)
         for notification in req.body.notifications
             event = getEventFromId(notification.event)
