@@ -29,6 +29,7 @@ exports['apns'] =
     cert: 'apns-cert.pem'
     key: 'apns-key.pem'
     cacheLength: 100
+    address: 'gateway.push.apple.com'
     # uncommant for dev env
     #gateway: 'gateway.sandbox.push.apple.com'
     #address: 'feedback.sandbox.push.apple.com'
